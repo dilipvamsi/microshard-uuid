@@ -1,3 +1,14 @@
+# python cache
+__pycache__
+
+# rust
+target
+
+# shared lib
+*.so
+*.dll
+*.dylib
+
 # Logs
 logs
 *.log

@@ -1,0 +1,41 @@
+{
+  "name": "microshard-uuid",
+  "version": "1.0.0",
+  "description": "A zero-lookup, partition-aware UUIDv8 implementation with microsecond precision.",
+  "main": "src/index.js",
+  "types": "types/index.d.ts",
+  "files": [
+    "src",
+    "types",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node test/test.js"
+  },
+  "keywords": [
+    "uuid",
+    "uuidv8",
+    "sharding",
+    "partitioning",
+    "microshard",
+    "database",
+    "distributed-systems",
+    "unique",
+    "guid"
+  ],
+  "author": "dilipvamsi",
+  "license": "MIT",
+  "engines": {
+    "node": ">=10.4.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/dilipvamsi/microshard-uuid.git",
+    "directory": "implementations/js"
+  },
+  "bugs": {
+    "url": "https://github.com/dilipvamsi/microshard-uuid/issues"
+  },
+  "homepage": "https://github.com/dilipvamsi/microshard-uuid#readme"
+}
