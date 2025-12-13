@@ -3,7 +3,7 @@
 A portable SQL implementation of MicroShard UUIDv8 for DuckDB.
 Works in **DuckDB CLI**, **Python**, **Node.js**, **WASM**, and **MotherDuck**.
 
-DuckDB is an in-process OLAP database (like SQLite but columnar). It has native support for `HUGEINT` (128-bit integers) and `UUID` types.
+DuckDB is an in-process OLAP database (like SQLite but columnar). It has native support for `UINT128` (128-bit integers) and `UUID` types.
 
 Because DuckDB is often used with **MotherDuck** (Managed Service) or in-browser via WASM, you should **not** build a C++ extension. Instead, use **SQL Macros**. They are portable, zero-dependency, and execute at native C++ speed due to DuckDB's vectorized engine.
 
@@ -59,14 +59,14 @@ LIMIT 5;
 
 ---
 
-## 🚀 Usage: High-Performance INT128 (Best for Analytics)
+## 🚀 Usage: High-Performance UINT128 (Best for Analytics)
 
-DuckDB can store 128-bit IDs as raw `HUGEINT` numbers. This avoids string parsing overhead, making extraction/routing **~50x faster**.
+DuckDB can store 128-bit IDs as raw `UINT128` numbers. This avoids string parsing overhead, making extraction/routing **~50x faster**.
 
 ### 1. Generating Raw Integers
 ```sql
 CREATE TABLE analytics (
-    id HUGEINT, -- Raw 128-bit integer
+    id UINT128, -- Raw 128-bit unsigned integer
     metric DOUBLE
 );
 
@@ -86,7 +86,7 @@ WHERE microshard_get_shard_id_int(id) = 100;
 ```
 
 ### 3. Converters (Hybrid Strategy)
-Store as `HUGEINT` for speed, but convert to `UUID` for display.
+Store as `UINT128` for speed, but convert to `UUID` for display.
 
 ```sql
 SELECT
@@ -100,20 +100,20 @@ LIMIT 5;
 
 ## 📊 Performance Comparison
 
-| Feature | Standard `UUID` Macros | `INT128` Macros | Winner |
+| Feature | Standard `UUID` Macros | `UINT128` Macros | Winner |
 | :--- | :--- | :--- | :--- |
 | **Storage** | 16 Bytes | 16 Bytes | Tie |
-| **Generation** | ~0.4s / 1M rows | **~0.2s / 1M rows** | **INT128** |
-| **Routing** | ~1.5s / 1M rows | **~0.03s / 1M rows** | **INT128 (50x)** |
+| **Generation** | ~0.4s / 1M rows | **~0.2s / 1M rows** | **UINT128** |
+| **Routing** | ~1.5s / 1M rows | **~0.03s / 1M rows** | **UINT128 (50x)** |
 | **Readability**| Human Readable | Big Number | UUID |
 
-**Recommendation:** Use **INT128** for internal storage and heavy analytics. Use **UUID** for data export and debugging.
+**Recommendation:** Use **UINT128** for internal storage and heavy analytics. Use **UUID** for data export and debugging.
 
 ---
 
 ## 🧠 Technical Nuance
 
-In C/Python, we handled bits using explicit hex masking. In SQL, we use `HUGEINT` math.
+In C/Python, we handled bits using explicit hex masking. In SQL, we use `UINT128` math.
 
 **128-Bit Integer Layout (MSB 127 to LSB 0):**
 
