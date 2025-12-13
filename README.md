@@ -86,45 +86,73 @@ This repository is a monorepo containing implementations for multiple languages 
 ```python
 from microshard_uuid import generate, get_shard_id
 
-# 1. Generate for Shard #100
-uid = generate(100)
+# 1. Generate an ID for Shard #500
+uid = generate(shard_id=500)
+print(f"Generated: {uid}")
 
-# 2. Extract Shard (Zero-Lookup Routing)
-shard = get_shard_id(uid)
-# shard == 100
+# 2. Extract Shard ID (Routing)
+target_shard = get_shard_id(uid)
+assert target_shard == 500
 ```
 
 ### JavaScript / TypeScript
 ```javascript
-import { generate, getIsoTimestamp } from 'microshard-uuid';
+import { generate } from 'microshard-uuid';
 
-const uid = generate(55);
+// 1. Generate an ID for Shard #101
+const uid = generate(101);
 
-// Extract time with full microsecond precision
-const time = getIsoTimestamp(uid);
-// "2025-12-12T10:00:00.123456Z"
+// 2. Storage (Canonical String)
+console.log(uid.toString());
+// Output: 018e65c9-3a10-0400-8000-a4f1d3b8e1a1
+
+// 3. Routing (Extract Shard ID)
+// No string parsing required; uses internal bitwise logic.
+if (uid.getShardId() === 101) {
+    console.log("Routing to Shard 101...");
+}
 ```
 
 ### Go
 ```go
-import "github.com/dilipvamsi/microshard-uuid/implementations/go"
+package main
+
+import (
+	"fmt"
+	"log"
+	"github.com/dilipvamsi/microshard-uuid/implementations/go"
+)
 
 func main() {
-    id, _ := microsharduuid.Generate(100)
+	// 1. Generate an ID for Shard #101
+	// Note: Shard ID must be uint32 (0 - 4,294,967,295)
+	uid, err := microsharduuid.Generate(101)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// String representation (Standard UUID format)
+	fmt.Println("Generated:", uid.String())
+	// Output: 018e65c9-3a10-0400-8000-a4f1d3b8e1a1
 }
 ```
 
 ### Rust
 ```rust
-use microshard_uuid::Generator;
+use microshard_uuid::MicroShardUUID;
 
 fn main() {
-    // Configure once at startup
-    let gen = Generator::new(500).unwrap();
+    // 1. Generate an ID for Shard #101
+    // Returns Result<MicroShardUUID, MicroShardError>
+    let uuid = MicroShardUUID::generate(101).expect("Shard ID too large");
 
-    // Generate anywhere in your app
-    let id = gen.new_id().unwrap();
-    println!("Stateful ID: {}", id);
+    println!("Generated: {}", uuid);
+    // Output: 018e65c9-3a10-0400-8000-a4f1d3b8e1a1
+
+    // 2. Extract Shard ID (Routing)
+    // No database lookup required.
+    let shard = uuid.shard_id();
+    assert_eq!(shard, 101);
 }
 ```
 ---
