@@ -149,6 +149,8 @@ DECLARE
     time_high bigint;
     time_low bigint;
     micros bigint;
+    seconds bigint;
+    sub_micros bigint;
 BEGIN
     -- 1. Time High (48 bits) -> Bytes 0-5
     time_high :=
@@ -169,6 +171,18 @@ BEGIN
     -- 3. Combine: Shift high part up by 6 to make room for low part
     micros := (time_high << 6) | time_low;
 
-    RETURN to_timestamp(micros::double precision / 1000000);
+    -- 4. Calculation: Split components to avoid Float53 rounding errors.
+    --    Direct multiplication (micros * INTERVAL '1 microsecond') casts to double.
+    --    Since 2^54 > 2^53 (double precision limit), odd numbers at the high
+    --    end of the range will be rounded, causing the off-by-one error.
+
+    seconds := micros / 1000000;      -- Integer Division
+    sub_micros := micros % 1000000;   -- Integer Modulo
+
+    -- Both 'seconds' (~1.8e10) and 'sub_micros' (<1e6) fit easily
+    -- within the 15-digit precision of standard floats used in interval math.
+    RETURN '1970-01-01 00:00:00+00'::timestamptz
+         + (seconds * INTERVAL '1 second')
+         + (sub_micros * INTERVAL '1 microsecond');
 END;
 $$ LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE;
