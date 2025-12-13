@@ -8,12 +8,12 @@ This enables **Zero-Lookup Routing**: your application can determine the databas
 
 ## 📦 Features
 
+*   **Zero Dependencies:** Built using only `std`. No `uuid`, `chrono`, or `rand` crates required.
 *   **Zero-Lookup Routing:** Extract Shard/Tenant IDs instantly from the UUID.
 *   **Microsecond Precision:** 54-bit timestamp ensures strict chronological sorting.
 *   **Massive Scale:** Supports **4.29 Billion** unique Shards/Tenants.
-*   **Collision Resistant:** 36 bits of randomness *per microsecond* per shard.
-*   **Type Safe:** Built on top of the standard `uuid` and `chrono` crates.
-*   **Zero Dependencies:** (Aside from standard ecosystem crates `uuid`, `rand`, `chrono`).
+*   **Collision Resistant:** 36 bits of randomness *per microsecond* per shard using a custom Xorshift64* PRNG.
+*   **High Performance:** Optimized `u128` internal representation for fast sorting and hashing.
 
 ---
 
@@ -21,90 +21,87 @@ This enables **Zero-Lookup Routing**: your application can determine the databas
 
 Add this to your `Cargo.toml`.
 
-If you are using this inside the monorepo:
 ```toml
 [dependencies]
-microshard-uuid = { path = "implementations/rust" }
-```
-
-If/when published to Crates.io:
-```toml
-[dependencies]
-microshard-uuid = "1.0.0"
+microshard-uuid = "1.0.0" # Replace with actual version or path
 ```
 
 ---
 
 ## 🚀 Usage
 
-### 1. Basic Generation (Stateless)
-Ideal for simple scripts or when the Shard ID changes per request.
+### 1. Basic Generation
+Generate a globally unique ID bound to a specific Shard ID (0 - 4,294,967,295).
 
 ```rust
-use microshard_uuid::{generate, get_shard_id};
+use microshard_uuid::MicroShardUUID;
 
 fn main() {
     // 1. Generate an ID for Shard #101
-    // Note: Shard ID must be u32 (0 - 4,294,967,295)
-    let uuid = generate(101).expect("Invalid Shard ID");
+    // Returns Result<MicroShardUUID, MicroShardError>
+    let uuid = MicroShardUUID::generate(101).expect("Shard ID too large");
 
     println!("Generated: {}", uuid);
     // Output: 018e65c9-3a10-0400-8000-a4f1d3b8e1a1
 
     // 2. Extract Shard ID (Routing)
-    let shard = get_shard_id(&uuid);
+    // No database lookup required.
+    let shard = uuid.shard_id();
     assert_eq!(shard, 101);
 }
 ```
 
 ### 2. Extracting Metadata
-You can decode any MicroShard UUID to retrieve its creation time and origin shard without a database lookup.
+You can decode any MicroShard UUID to retrieve its creation time and origin shard. The library includes a zero-dependency ISO 8601 formatter.
 
 ```rust
-use microshard_uuid::{get_timestamp, get_iso_timestamp};
+use microshard_uuid::MicroShardUUID;
 
-fn print_metadata(uuid: &uuid::Uuid) {
-    // Option A: Get Chrono DateTime object
-    let dt = get_timestamp(uuid);
-    println!("Created At (Chrono): {:?}", dt);
+fn print_metadata() {
+    let uuid = MicroShardUUID::generate(55).unwrap();
 
-    // Option B: Get ISO 8601 String
-    // Preserves full microsecond precision (e.g. .123456Z)
-    let iso = get_iso_timestamp(uuid);
+    // Option A: Get ISO 8601 String
+    // Format: "YYYY-MM-DDTHH:MM:SS.mmmmmmZ"
+    let iso = uuid.to_iso_string();
     println!("Created At (ISO): {}", iso);
+
+    // Option B: Get Raw Microseconds (Unix Epoch)
+    let micros = uuid.timestamp_micros();
+    println!("Created At (Unix Micros): {}", micros);
 }
 ```
 
-### 3. Stateful Generator (Struct)
-Best for dependency injection or application configuration where the Shard ID is fixed for the lifecycle of the service.
+### 3. Backfilling & Parsing (Explicit Time)
+Generate UUIDs for past events while maintaining correct sort order using ISO 8601 strings.
 
 ```rust
-use microshard_uuid::Generator;
-
-fn main() {
-    // Configure once at startup
-    let gen = Generator::new(500).unwrap();
-
-    // Generate anywhere in your app
-    let id = gen.new_id().unwrap();
-    println!("Stateful ID: {}", id);
-}
-```
-
-### 4. Backfilling (Explicit Time)
-Generate UUIDs for past events while maintaining correct sort order.
-
-```rust
-use microshard_uuid::from_iso;
+use microshard_uuid::MicroShardUUID;
 
 fn backfill() {
     // Create ID for a specific past event
-    // Supports ISO strings with microsecond precision
+    // Supports strict ISO 8601 with microsecond precision
     let past_event = "2023-01-01T12:00:00.654321Z";
 
-    let old_uuid = from_iso(past_event, 55).unwrap();
+    let old_uuid = MicroShardUUID::from_iso(past_event, 55).expect("Invalid Timestamp");
 
     println!("Legacy UUID: {}", old_uuid);
+}
+```
+
+### 4. Interoperability
+While `MicroShardUUID` is a custom type optimized for performance, it converts easily to bytes for network transmission or database storage.
+
+```rust
+use microshard_uuid::MicroShardUUID;
+
+fn main() {
+    let uuid = MicroShardUUID::generate(1).unwrap();
+
+    // Convert to standard 16-byte array (Big Endian)
+    let bytes: [u8; 16] = uuid.as_bytes();
+
+    // Convert to raw u128 (Fastest for internal sorting)
+    let raw: u128 = uuid.as_u128();
 }
 ```
 
@@ -126,9 +123,8 @@ Total Size: **128 Bits**
 
 ## 🧪 Running Tests
 
-This library includes a comprehensive test suite covering integrity, timing, sorting, and error handling.
+This library includes a comprehensive test suite covering integrity, timing, sorting, and parsing logic.
 
 ```bash
-# From inside implementations/rust/
 cargo test
 ```
