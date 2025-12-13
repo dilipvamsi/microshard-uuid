@@ -1,7 +1,3 @@
-Here is the comprehensive **Root `README.md`** for your repository. It serves as the central documentation hub, explaining the architecture and linking to the specific language implementations.
-
----
-
 # MicroShard UUID
 
 **A zero-lookup, partition-aware UUIDv8 implementation with microsecond precision.**
