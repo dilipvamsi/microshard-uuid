@@ -37,3 +37,9 @@ endif
 
 clean:
 	rm -f *.so *.dylib *.dll
+	find . -type f -name "*.pyc" -delete
+	find . -type d -name "__pycache__" -delete
+
+test: microshard_uuid
+	@echo "--- Running Tests ---"
+	python3 -m unittest tests/test_sqlite.py

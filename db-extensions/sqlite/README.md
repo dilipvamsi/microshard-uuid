@@ -54,7 +54,7 @@ SELECT * FROM users WHERE id = '018e65c9-3a10-0400-8000-a4f1d3b8e1a1';
 
 **Correct (Fast):**
 ```sql
-SELECT * FROM users 
+SELECT * FROM users
 WHERE id = microshard_uuid_from_string('018e65c9-3a10-0400-8000-a4f1d3b8e1a1');
 ```
 
@@ -113,7 +113,7 @@ const path = require('path');
 // 1. Connect
 const db = new Database(':memory:');
 
-// 2. Resolve Path (OS-dependent extension not strictly required for loadExtension, 
+// 2. Resolve Path (OS-dependent extension not strictly required for loadExtension,
 //    but good practice to point to the file explicitly)
 const extPath = path.join(__dirname, 'microshard_uuid'); // It auto-detects .so/.dll/.dylib
 
@@ -128,7 +128,7 @@ try {
 
 // 4. Usage
 const row = db.prepare(`
-    SELECT 
+    SELECT
         microshard_uuid_to_string(microshard_uuid_generate(55)) as uuid,
         microshard_uuid_get_iso(microshard_uuid_generate(55)) as time_iso
 `).get();
@@ -155,13 +155,14 @@ CREATE TABLE events (
 INSERT INTO events (payload) VALUES ('User Click');
 
 -- Insert with Backfilling (Past Time)
-INSERT INTO events (id, payload) 
+INSERT INTO events (id, payload)
 VALUES (microshard_uuid_from_iso('2023-01-01T12:00:00.000000Z', 1), 'Old Event');
 
 -- Query (Sorted by Time automatically)
-SELECT 
-    microshard_uuid_to_string(id) as uuid, 
-    microshard_uuid_get_iso(id) as timestamp, 
-    payload 
-FROM events;
+SELECT
+    microshard_uuid_to_string(id) as uuid,
+    microshard_uuid_get_iso(id) as timestamp,
+    payload
+FROM events
+ORDER BY id;
 ```
