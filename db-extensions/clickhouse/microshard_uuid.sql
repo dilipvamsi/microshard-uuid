@@ -1,70 +1,134 @@
--- MicroShard UUID - ClickHouse Optimized
--- Architecture: 54-bit Time | 32-bit Shard | 36-bit Random
--- Optimization: Computes High/Low Qwords as UInt64 separately.
+-- =============================================================================
+-- MICROSHARD UUID v8 - CLICKHOUSE IMPLEMENTATION
+-- =============================================================================
+--
+-- WHAT IS THIS?
+-- This is a custom UUID generator designed for distributed systems.
+-- It combines Time, a Shard ID, and Randomness into a single 128-bit identifier.
+--
+-- WHY USE IT?
+-- 1. Sortable: UUIDs generated later will be alphabetically "larger".
+-- 2. Sharded: You can extract the Shard ID (e.g., Tenant ID) directly from the UUID.
+-- 3. Unique: Includes random bits to prevent collisions.
+-- 4. Fast: Uses low-level CPU instructions (bitwise math) instead of slow string parsing.
+--
+-- THE STRUCTURE (128 Bits Total):
+-- We split the UUID into two 64-bit halves (High and Low).
+--
+-- [ UUID START (High 64 Bits) ]  --------------------------------------------+
+-- | Time (High) | Version | Time (Low) | Shard (High) |                      |
+-- | 48 bits     | 4 bits  | 6 bits     | 6 bits       |                      |
+-- +---------------------------------------------------+                      |
+--                                                                            |
+-- [ UUID END (Low 64 Bits) ]     --------------------------------------------+
+-- | Variant | Shard (Low) | Randomness |                                     |
+-- | 2 bits  | 26 bits     | 36 bits    |                                     |
+-- +------------------------------------+
+--
+-- THE "LITTLE ENDIAN" TRICK:
+-- ClickHouse runs on x86 CPUs, which store numbers "backwards" in memory.
+-- - The "Low" bits of a number are stored at the START of memory.
+-- - The "High" bits of a number are stored at the END of memory.
+--
+-- To make the UUID string print correctly (Time first, Random last), we do this:
+-- 1. Put the "Time" logic into the LOW bits of the 128-bit integer.
+-- 2. Put the "Random" logic into the HIGH bits of the 128-bit integer.
+-- =============================================================================
+
 
 -- =============================================================================
 -- 1. CORE LOGIC FUNCTION
--- Accepts (micros, shard_id) -> Returns UUID
+-- This performs the heavy lifting. It takes numbers and turns them into a UUID.
 -- =============================================================================
 
 CREATE OR REPLACE FUNCTION _microshard_core AS (micros, shard_id) ->
     reinterpretAsUUID(
         bitOr(
-            -- STEP 1: Construct HIGH 64 Bits (as UInt128 shifted left)
-            -- Layout relative to 0-63: [TimeHigh 48] [Ver 4] [TimeLow 6] [ShardHigh 6]
-            bitShiftLeft(
-                toUInt128(
+            -- =================================================================
+            -- PART 1: THE BEGINNING OF THE UUID (Time + Version + Shard High)
+            -- =================================================================
+            -- We place this in the LOWest 64 bits of the UInt128.
+            -- Because ClickHouse is Little Endian, the "Low" bits are written
+            -- to the START of the memory block, making them the START of the UUID string.
+            toUInt128(
+                toUInt64(
                     bitOr(
                         bitOr(
-                            -- A. Time High (Top 48 bits) -> Position 16
-                            bitShiftLeft(bitShiftRight(micros, 6), 16),
-                            -- B. Version 8 (4 bits) -> Position 12
-                            32768 -- (8 << 12)
+                            -- A. TIME HIGH (Top 48 bits)
+                            -- We take the microsecond timestamp.
+                            -- 1. Shift Right 6: Discard the bottom 6 bits (saved for later).
+                            -- 2. Shift Left 16: Move it up to make room for Version (4) + TimeLow (6) + ShardHigh (6).
+                            bitShiftLeft(bitShiftRight(toUInt64(micros), 6), 16),
+
+                            -- B. VERSION (4 bits)
+                            -- Standard UUIDs need a version number. We use 8 (Binary 1000).
+                            -- We shift it left 12 positions to sit right below Time High.
+                            32768 -- Equal to (8 << 12)
                         ),
                         bitOr(
-                            -- C. Time Low (Bottom 6 bits) -> Position 6
-                            -- 2^6-1
-                            bitShiftLeft(bitAnd(micros, 63), 6),
-                            -- D. Shard High (Top 6 bits) -> Position 0
-                            bitShiftRight(shard_id, 26)
-                            -- bitAnd(bitShiftRight(shard_id, 26), 63)
+                            -- C. TIME LOW (Bottom 6 bits)
+                            -- We take the microsecond timestamp again.
+                            -- 1. 'bitAnd' with 63 keeps only the bottom 6 bits.
+                            -- 2. Shift Left 6: Move it up to make room for Shard High.
+                            bitShiftLeft(bitAnd(toUInt64(micros), 63), 6),
+
+                            -- D. SHARD HIGH (Top 6 bits)
+                            -- The Shard ID is 32 bits, but we can only fit 6 bits here.
+                            -- We take the TOP 6 bits of the Shard ID.
+                            bitShiftRight(toUInt32(shard_id), 26)
+                        )
+                    )
+                )
+            ),
+
+            -- =================================================================
+            -- PART 2: THE END OF THE UUID (Variant + Shard Low + Random)
+            -- =================================================================
+            -- We place this in the HIGHEST 64 bits of the UInt128.
+            -- In Little Endian memory, these bits come LAST.
+            bitShiftLeft(
+                toUInt128(
+                    toUInt64(
+                        bitOr(
+                            bitOr(
+                                -- E. VARIANT (2 bits)
+                                -- UUID standard requires a "Variant" marker. We use 2 (Binary 10).
+                                -- This goes at the very top of this 64-bit segment (Position 62).
+                                9223372036854775808, -- Equal to (2 << 62)
+
+                                -- F. SHARD LOW (Bottom 26 bits)
+                                -- We put the remaining 26 bits of the Shard ID here.
+                                -- 1. 'bitAnd' 67108863 keeps the bottom 26 bits.
+                                -- 2. Shift Left 36: Move it up to sit right below the Variant.
+                                bitShiftLeft(bitAnd(toUInt64(shard_id), 67108863), 36)
+                            ),
+                            -- G. RANDOM (36 bits)
+                            -- We fill the remaining space with random noise to ensure uniqueness.
+                            -- rand64() generates 64 bits. We Shift Right 28 to keep only the top 36 bits.
+                            bitShiftRight(rand64(), 28)
                         )
                     )
                 ),
-                64
-            ),
-
-            -- STEP 2: Construct LOW 64 Bits (as UInt128)
-            -- Layout relative to 0-63: [Var 2] [ShardLow 26] [Random 36]
-            toUInt128(
-                bitOr(
-                    bitOr(
-                        -- E. Variant 2 (2 bits) -> Position 62
-                        9223372036854775808, -- (2 << 62)
-                        -- F. Shard Low (Bottom 26 bits) -> Position 36
-                        -- 2^26-1
-                        bitShiftLeft(bitAnd(toUInt64(shard_id), 67108863), 36)
-                    ),
-                    -- Random (36 bits) -> Position 0
-                    -- Logic: Generate 64 bits, drop bottom 28 to keep top 36.
-                    bitShiftRight(rand64(), 28)
-                )
+                64 -- Move this whole block 64 bits to the left, into the "High" position.
             )
         )
     );
 
 -- =============================================================================
 -- 2. PUBLIC GENERATORS
+-- Use these functions in your INSERT statements.
 -- =============================================================================
 
--- Main Generator: Calculates 'now()' exactly once and passes it.
+-- USAGE: microshard_generate(101)
+-- Generates a UUID using the CURRENT system time.
 CREATE OR REPLACE FUNCTION microshard_generate AS (shard_id) ->
     _microshard_core(
-        toUInt64(toUnixTimestamp64Micro(now64(6))),
-        toUInt32(shard_id)
+        toUInt64(toUnixTimestamp64Micro(now64(6))), -- Get current time in microseconds
+        toUInt32(shard_id)                          -- Ensure Shard ID is 32-bit
     );
 
--- Backfilling Generator: Accepts explicit timestamp.
+-- USAGE: microshard_from_micros(1698000000000, 101)
+-- Generates a UUID using a PAST or FUTURE timestamp (for backfilling data).
 CREATE OR REPLACE FUNCTION microshard_from_micros AS (micros, shard_id) ->
     _microshard_core(
         toUInt64(micros),
@@ -73,49 +137,70 @@ CREATE OR REPLACE FUNCTION microshard_from_micros AS (micros, shard_id) ->
 
 -- =============================================================================
 -- 3. EXTRACTION FUNCTIONS
+-- Use these to read data BACK out of a UUID column.
 -- =============================================================================
 
+-- EXTRACT SHARD ID
+-- We have to stitch the Shard ID back together from two different places.
 CREATE OR REPLACE FUNCTION microshard_get_shard_id AS (uid) ->
     bitOr(
-        -- Part A: Shard High (6 bits)
-        -- 1. Shift Right 64: Moves High Qword to bottom.
-        -- 2. toUInt32: Truncates top 96 bits (TimeHigh/Ver/TimeLow fall off or stay in upper 32, irrelevant).
-        -- 3. Mask 63: Keeps bottom 6 bits.
-        -- 4. Shift Left 26: Moves to top of Shard ID.
+        -- Part A: Get the Top 6 bits
+        -- They are hidden in the "Time" section (Low 64 bits of the integer).
         bitShiftLeft(
             bitAnd(
-                toUInt32(bitShiftRight(reinterpretAsUInt128(uid), 64)),
-                63
+                toUInt32(toUInt64(reinterpretAsUInt128(uid))), -- Read the bottom 64 bits
+                63 -- Mask to get only the very last 6 bits
             ),
-            26
+            26 -- Shift them back up to the top position (26)
         ),
-
-        -- Part B: Shard Low (26 bits)
-        -- 1. Shift Right 36: Moves Shard Low to bottom.
-        -- 2. toUInt32: Truncates top 96 bits (Variant bits stay, but TimeHigh etc fall off).
-        -- 3. Mask 0x3FFFFFF: Removes Variant bits, keeps 26 Shard bits.
+        -- Part B: Get the Bottom 26 bits
+        -- They are hidden in the "Random" section (High 64 bits of the integer).
         bitAnd(
-            toUInt32(bitShiftRight(reinterpretAsUInt128(uid), 36)),
-            67108863
+            toUInt32(
+                bitShiftRight(
+                    toUInt64(bitShiftRight(reinterpretAsUInt128(uid), 64)), -- Read the top 64 bits
+                    36 -- Shift down past the Random bits to find the Shard bits
+                )
+            ),
+            67108863 -- Mask to clean up any bits above the 26 we want
         )
     );
 
-CREATE OR REPLACE FUNCTION microshard_get_timestamp AS (uid) ->
-    toDateTime64(
-        bitOr(
-            -- Extract Time High (from High 64 bits)
-            -- Shift Right 64 (to get High Qword). Shift Right 16 (remove Ver/LowTime/Shard). Shift Left 6.
-            bitShiftLeft(
-                bitShiftRight(toUInt64(bitShiftRight(reinterpretAsUInt128(uid), 64)), 16),
-                6
+
+-- Extract Raw Microseconds (Bypasses DateTime64 Year 2299 limit)
+CREATE OR REPLACE FUNCTION microshard_get_micros AS (uid) ->
+    bitOr(
+        -- Part A: Get the Top 48 bits of Time
+        -- Found in the "Time" section (Low 64 bits of the integer).
+        bitShiftLeft(
+            bitShiftRight(
+                toUInt64(toUInt64(reinterpretAsUInt128(uid))),
+                16 -- Shift right to skip Version/ShardHigh/TimeLow
             ),
-            -- Extract Time Low (from High 64 bits)
-            -- Shift Right 64. Shift Right 6. Mask 6 bits.
-            bitAnd(bitShiftRight(toUInt64(bitShiftRight(reinterpretAsUInt128(uid), 64)), 6), 63)
-        ) / 1000000.0,
-        6
+            6 -- Shift left to restore original position
+        ),
+        -- Part B: Get the Bottom 6 bits of Time
+        -- Found in the "Time" section (Low 64 bits of the integer).
+        bitAnd(
+            bitShiftRight(
+                toUInt64(toUInt64(reinterpretAsUInt128(uid))),
+                6 -- Shift right to skip ShardHigh
+            ),
+            63 -- Mask to keep only the 6 bits we want
+        )
     );
 
+-- EXTRACT TIMESTAMP
+-- The maximum supported value is 2262-04-11 23:47:16 in UTC from official documentation
+-- We reconstruct the microsecond timestamp from its split parts.
+CREATE OR REPLACE FUNCTION microshard_get_timestamp AS (uid) ->
+    toDateTime64(
+        microshard_get_micros(uid) / 1000000.0, -- Convert microseconds back to seconds (float)
+        6 -- Precision for DateTime64
+    );
+
+-- EXTRACT ISO STRING
+-- Helper to get a human-readable date string (e.g., '2023-10-27T10:00:00.123456Z')
 CREATE OR REPLACE FUNCTION microshard_get_iso_timestamp AS (uid) ->
     formatDateTime(
         microshard_get_timestamp(uid),
