@@ -165,7 +165,7 @@ CREATE OR REPLACE MACRO microshard_from_micros_int(macros, shard_id) AS (
 );
 
 CREATE OR REPLACE MACRO microshard_generate_int(shard_id) AS (
-    microshard_from_micros_int((epoch(now()) * 1000000)::BIGINT, shard_id)
+    microshard_from_micros_int((epoch(now()) * 1000000)::UINT64, shard_id)
 );
 
 CREATE OR REPLACE MACRO microshard_get_shard_id_int(hid) AS (
