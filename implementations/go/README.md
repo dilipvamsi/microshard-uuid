@@ -4,7 +4,7 @@
 
 `microshard-uuid` is a 128-bit identifier compliant with IETF RFC 9562. Unlike standard UUIDs (v4/v7), MicroShard embeds a **32-bit Shard ID** directly into the ID.
 
-This enables **Zero-Lookup Routing**: your application can determine the database shard, tenant, or region of a record simply by looking at its Primary Key.
+This enables **Zero-Lookup Routing**: your application can determine the database shard, tenant, or region of a record simply by looking at its Primary Key, without needing a lookup table or index.
 
 ## 📦 Features
 
@@ -47,37 +47,38 @@ func main() {
 		log.Fatal(err)
 	}
 
-	fmt.Println("Generated:", uid)
+	// String representation (Standard UUID format)
+	fmt.Println("Generated:", uid.String())
 	// Output: 018e65c9-3a10-0400-8000-a4f1d3b8e1a1
 }
 ```
 
-### 2. Extracting Metadata
-You can decode any MicroShard UUID to retrieve its creation time and origin shard without a database lookup.
+### 2. Parsing & Extracting Metadata
+To read metadata from a UUID string, you must first `Parse` it into a struct. You can then extract the creation time and origin shard without a database lookup.
 
 ```go
-func extract(uid string) {
-	// A. Get Shard ID
-	shardID, err := microsharduuid.GetShardID(uid)
+func extract(uuidStr string) {
+	// A. Parse the string into a MicroShardUUID struct
+	uid, err := microsharduuid.Parse(uuidStr)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("Invalid UUID: %v", err)
 	}
-	fmt.Printf("Origin Shard: %d\n", shardID)
 
-	// B. Get Time (Go Time Object)
-	ts, _ := microsharduuid.GetTime(uid)
-	fmt.Println("Created At (Time):", ts.String())
+	// B. Get Shard ID (returns uint32)
+	fmt.Printf("Origin Shard: %d\n", uid.ShardID())
 
-	// C. Get Time (ISO 8601 String)
+	// C. Get Time (Go Time Object)
+	fmt.Println("Created At (Time):", uid.Time().String())
+
+	// D. Get Time (ISO 8601 String)
 	// Useful for JSON responses. Preserves microsecond precision.
-	iso, _ := microsharduuid.GetISOTime(uid)
-	fmt.Println("Created At (ISO):", iso)
+	fmt.Println("Created At (ISO):", uid.ISOTime())
 	// Output: 2025-12-12T10:00:00.123456Z
 }
 ```
 
-### 3. Stateful Generator (Struct)
-Best for Dependency Injection or application configuration where the Shard ID is fixed for the service.
+### 3. Stateful Generator
+Best for Dependency Injection or application configuration where the Shard ID is fixed for the service instance.
 
 ```go
 func statefulExample() {
@@ -89,7 +90,7 @@ func statefulExample() {
 
 	// Generate anywhere in your app
 	uid, _ := gen.NewID()
-	fmt.Println("Stateful UUID:", uid)
+	fmt.Println("Stateful UUID:", uid.String())
 }
 ```
 
@@ -103,10 +104,45 @@ func backfill() {
 	// Create a specific time in the past
 	past := time.Date(2023, 1, 1, 12, 0, 0, 0, time.UTC)
 
-	// Generate UUID for that time
+	// Generate UUID for that time with Shard ID 55
 	oldUID, _ := microsharduuid.FromTime(past, 55)
 
-	fmt.Println("Legacy UUID:", oldUID)
+	fmt.Println("Legacy UUID:", oldUID.String())
+}
+```
+
+### 5. Database Storage (Bytes)
+For optimal storage, use the 16-byte binary representation (e.g., `BINARY(16)` in MySQL or `UUID` in PostgreSQL).
+
+```go
+func toBytes(uid microsharduuid.MicroShardUUID) {
+	// Get 16-byte slice
+	rawBytes := uid.Bytes()
+
+	fmt.Printf("Raw bytes: %x\n", rawBytes)
+}
+```
+
+### 6. Comparison & Sorting
+MicroShard UUIDs are designed to be sortable by creation time. The library provides helper methods and a `sort.Interface` implementation.
+
+```go
+import "sort"
+
+func comparisonExample(id1, id2 microsharduuid.MicroShardUUID) {
+	// Check chronological order
+	if id1.Before(id2) {
+		fmt.Println("ID1 is older than ID2")
+	}
+
+	// Check equality
+	if id1.Equals(id2) {
+		fmt.Println("IDs are identical")
+	}
+
+	// Sort a slice of UUIDs
+	list := microsharduuid.ByTime{id2, id1}
+	sort.Sort(list) // Sorts in-place chronologically
 }
 ```
 
@@ -128,7 +164,7 @@ Total Size: **128 Bits**
 
 ## 🧪 Running Tests
 
-This library includes a comprehensive test suite covering integrity, timing, and error handling.
+This library includes a comprehensive test suite covering integrity, timing, sorting, and error handling.
 
 ```bash
 # From inside implementations/go/
