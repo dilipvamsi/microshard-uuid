@@ -50,13 +50,19 @@ This repository is a monorepo containing implementations for multiple languages 
 | **JavaScript** | [`implementations/js`](implementations/js) | ✅ Stable | Node/Browser Universal, Types, Zero deps |
 | **Go** | [`implementations/go`](implementations/go) | ✅ Stable | `uint64` optimizations, Zero deps |
 | **Rust** | [`implementations/rust`](implementations/rust) | ✅ Stable | Type-safe, `chrono` integration |
+| **Lua** | [`implementations/lua`](implementations/lua) | ✅ Stable | Nginx/Redis optimized, 4x32-bit math |
+
+
+### Technical Notes on Implementations
+
+*   **Lua:** Uses a 4x32-bit integer structure to bypass Lua 5.1's double-precision limits. It automatically detects and uses `ngx.now` (OpenResty) or `redis.call('TIME')` (Redis) for high-precision timing.
 
 ### Database Extensions
 | Database | Path | Type | Performance |
 | :--- | :--- | :--- | :--- |
 | **SQLite** | [`db-extensions/sqlite`](db-extensions/sqlite) | C Extension | ~50x faster than Text UUIDs |
 | **PostgreSQL** | [`db-extensions/postgres`](db-extensions/postgres) | PL/pgSQL | Zero-allocation bytea parsing |
-| **DuckDB** | [`db-extensions/duckdb`](db-extensions/duckdb) | SQL Macros | Vectorized `HUGEINT` Math |
+| **DuckDB** | [`db-extensions/duckdb`](db-extensions/duckdb) | SQL Macros | Vectorized `UINT128` Math |
 | **ClickHouse** | [`db-extensions/clickhouse`](db-extensions/clickhouse) | SQL UDFs | Native `UInt128` / Columnar |
 
 
@@ -64,8 +70,9 @@ This repository is a monorepo containing implementations for multiple languages 
 
 *   **SQLite:** Written in C as a loadable extension because SQLite's native SQL engine lacks 64-bit bitwise operators and 128-bit integers.
 *   **PostgreSQL:** Uses optimized `int8send`/`uuid_send` binary access to avoid expensive string parsing overhead.
-*   **DuckDB:** Leverages the native 128-bit `HUGEINT` type for bitwise operations, allowing vectorization engine to process millions of IDs per second.
+*   **DuckDB:** Leverages the native 128-bit `UINT128` type for bitwise operations, allowing vectorization engine to process millions of IDs per second.
 *   **ClickHouse:** Operates directly on `UInt128`, enabling high-speed columnar generation and filtering without string conversion.
+
 ---
 
 ## 🚀 Comparison
@@ -135,6 +142,25 @@ func main() {
 	fmt.Println("Generated:", uid.String())
 	// Output: 018e65c9-3a10-0400-8000-a4f1d3b8e1a1
 }
+```
+
+### Lua (Nginx / Redis)
+```lua
+local uuid = require("microsharduuid")
+
+-- 1. Generate an ID for Shard #101
+-- Auto-detects Nginx/Redis for high precision timing
+local u = uuid.new(101)
+
+-- 2. Storage (Canonical String)
+print("Generated: " .. uuid.tostring(u))
+-- Output: 018e65c9-3a10-0400-8000-a4f1d3b8e1a1
+
+-- 3. Routing (Extract Shard ID)
+local shard_id = uuid.shard_id(u)
+if shard_id == 101 then
+    print("Routing to Shard 101...")
+end
 ```
 
 ### Rust
