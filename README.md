@@ -51,27 +51,20 @@ This repository is a monorepo containing implementations for multiple languages 
 | **Go** | [`implementations/go`](implementations/go) | ✅ Stable | `uint64` optimizations, Zero deps |
 | **Rust** | [`implementations/rust`](implementations/rust) | ✅ Stable | Type-safe, `chrono` integration |
 | **Lua** | [`implementations/lua`](implementations/lua) | ✅ Stable | Nginx/Redis optimized, 4x32-bit math |
-
-
-### Technical Notes on Implementations
-
-*   **Lua:** Uses a 4x32-bit integer structure to bypass Lua 5.1's double-precision limits. It automatically detects and uses `ngx.now` (OpenResty) or `redis.call('TIME')` (Redis) for high-precision timing.
+| **C / C++** | [`implementations/c`](implementations/c) | ✅ Stable | Header-only, Thread-safe, Zero deps |
 
 ### Database Extensions
 | Database | Path | Type | Performance |
 | :--- | :--- | :--- | :--- |
 | **SQLite** | [`db-extensions/sqlite`](db-extensions/sqlite) | C Extension | ~50x faster than Text UUIDs |
 | **PostgreSQL** | [`db-extensions/postgres`](db-extensions/postgres) | PL/pgSQL | Zero-allocation bytea parsing |
-| **DuckDB** | [`db-extensions/duckdb`](db-extensions/duckdb) | SQL Macros | Vectorized `UINT128` Math |
+| **DuckDB** | [`db-extensions/duckdb`](db-extensions/duckdb) | SQL Macros | Vectorized 128-bit Math |
 | **ClickHouse** | [`db-extensions/clickhouse`](db-extensions/clickhouse) | SQL UDFs | Native `UInt128` / Columnar |
 
-
-### Technical Notes on Implementations
-
+### Technical Notes
+*   **Lua:** Uses a 4x32-bit integer structure to bypass Lua 5.1's double-precision limits. It automatically detects and uses `ngx.now` (OpenResty) or `redis.call('TIME')` (Redis) for high-precision timing.
+*   **C / C++:** A single header-only library that auto-detects Windows/POSIX for threading and time. It uses Xoshiro256** for high-performance random generation.
 *   **SQLite:** Written in C as a loadable extension because SQLite's native SQL engine lacks 64-bit bitwise operators and 128-bit integers.
-*   **PostgreSQL:** Uses optimized `int8send`/`uuid_send` binary access to avoid expensive string parsing overhead.
-*   **DuckDB:** Leverages the native 128-bit `UINT128` type for bitwise operations, allowing vectorization engine to process millions of IDs per second.
-*   **ClickHouse:** Operates directly on `UInt128`, enabling high-speed columnar generation and filtering without string conversion.
 
 ---
 
@@ -144,6 +137,25 @@ func main() {
 }
 ```
 
+### Rust
+```rust
+use microshard_uuid::MicroShardUUID;
+
+fn main() {
+    // 1. Generate an ID for Shard #101
+    // Returns Result<MicroShardUUID, MicroShardError>
+    let uuid = MicroShardUUID::generate(101).expect("Shard ID too large");
+
+    println!("Generated: {}", uuid);
+    // Output: 018e65c9-3a10-0400-8000-a4f1d3b8e1a1
+
+    // 2. Extract Shard ID (Routing)
+    // No database lookup required.
+    let shard = uuid.shard_id();
+    assert_eq!(shard, 101);
+}
+```
+
 ### Lua (Nginx / Redis)
 ```lua
 local uuid = require("microsharduuid")
@@ -163,24 +175,62 @@ if shard_id == 101 then
 end
 ```
 
-### Rust
-```rust
-use microshard_uuid::MicroShardUUID;
+### C (Header-Only)
+```c
+#include <stdio.h>
+#include "microshard_uuid.h"
 
-fn main() {
-    // 1. Generate an ID for Shard #101
-    // Returns Result<MicroShardUUID, MicroShardError>
-    let uuid = MicroShardUUID::generate(101).expect("Shard ID too large");
+int main() {
+    // 1. Generate (Shard ID 101)
+    ms_uuid_t uid = ms_generate(101);
 
-    println!("Generated: {}", uuid);
-    // Output: 018e65c9-3a10-0400-8000-a4f1d3b8e1a1
+    // 2. Convert to string
+    char buffer[37];
+    if (ms_to_string(uid, buffer, sizeof(buffer)) == MS_OK) {
+        printf("Generated: %s\n", buffer);
+    }
 
-    // 2. Extract Shard ID (Routing)
-    // No database lookup required.
-    let shard = uuid.shard_id();
-    assert_eq!(shard, 101);
+    // 3. Extract Shard ID (Zero-Lookup)
+    uint32_t shard = ms_extract_shard(uid);
+    printf("Origin Shard: %u\n", shard);
+
+    return 0;
 }
 ```
+
+### C++ (Wrapper)
+```cpp
+#include <iostream>
+#include "microshard_uuid.hpp"
+
+using namespace microshard;
+
+int main() {
+    try {
+        // 1. Generate
+        UUID uid = UUID::generate(101);
+
+        // 2. Print (Stream operator overloaded)
+        std::cout << "Generated: " << uid << std::endl;
+
+        // 3. Extract Metadata
+        std::cout << "Shard ID: " << uid.getShardId() << std::endl;
+        std::cout << "Time ISO: " << uid.toIsoTime() << std::endl;
+
+        // 4. Parsing
+        UUID parsed = UUID::fromString("018e65c9-3a10-0400-8000-a4f1d3b8e1a1");
+
+        if (parsed == uid) {
+            std::cout << "UUIDs match!" << std::endl;
+        }
+
+    } catch (const std::exception& e) {
+        std::cerr << "Error: " << e.what() << std::endl;
+    }
+    return 0;
+}
+```
+
 ---
 
 ## 🛡️ Safety & Collision Logic
