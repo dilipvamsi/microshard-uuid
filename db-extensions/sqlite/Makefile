@@ -3,7 +3,7 @@ UNAME_S := $(shell uname -s)
 
 CC = gcc
 # -O2 for optimization, -fPIC for position independent code
-CFLAGS = -g -fPIC -O2
+CFLAGS = -g -fPIC -O2 -I../../implementations/c_cpp
 
 # Default target
 all: microshard_uuid
