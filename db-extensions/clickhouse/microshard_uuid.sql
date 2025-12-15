@@ -58,7 +58,7 @@ CREATE OR REPLACE FUNCTION _microshard_core AS (micros, shard_id) ->
                             -- We take the microsecond timestamp.
                             -- 1. Shift Right 6: Discard the bottom 6 bits (saved for later).
                             -- 2. Shift Left 16: Move it up to make room for Version (4) + TimeLow (6) + ShardHigh (6).
-                            bitShiftLeft(bitShiftRight(toUInt64(micros), 6), 16),
+                            bitShiftLeft(bitShiftRight(micros, 6), 16),
 
                             -- B. VERSION (4 bits)
                             -- Standard UUIDs need a version number. We use 8 (Binary 1000).
@@ -70,12 +70,12 @@ CREATE OR REPLACE FUNCTION _microshard_core AS (micros, shard_id) ->
                             -- We take the microsecond timestamp again.
                             -- 1. 'bitAnd' with 63 keeps only the bottom 6 bits.
                             -- 2. Shift Left 6: Move it up to make room for Shard High.
-                            bitShiftLeft(bitAnd(toUInt64(micros), 63), 6),
+                            bitShiftLeft(bitAnd(micros, 63), 6),
 
                             -- D. SHARD HIGH (Top 6 bits)
                             -- The Shard ID is 32 bits, but we can only fit 6 bits here.
                             -- We take the TOP 6 bits of the Shard ID.
-                            bitShiftRight(toUInt32(shard_id), 26)
+                            bitShiftRight(shard_id, 26)
                         )
                     )
                 )
@@ -142,13 +142,13 @@ CREATE OR REPLACE FUNCTION microshard_from_micros AS (micros, shard_id) ->
 
 -- EXTRACT SHARD ID
 -- We have to stitch the Shard ID back together from two different places.
-CREATE OR REPLACE FUNCTION microshard_get_shard_id AS (uid) ->
+CREATE OR REPLACE FUNCTION _microshard_get_shard_id AS (iid) ->
     bitOr(
         -- Part A: Get the Top 6 bits
         -- They are hidden in the "Time" section (Low 64 bits of the integer).
         bitShiftLeft(
             bitAnd(
-                toUInt32(toUInt64(reinterpretAsUInt128(uid))), -- Read the bottom 64 bits
+                toUInt32(iid), -- Read the bottom 32 bits
                 63 -- Mask to get only the very last 6 bits
             ),
             26 -- Shift them back up to the top position (26)
@@ -158,7 +158,7 @@ CREATE OR REPLACE FUNCTION microshard_get_shard_id AS (uid) ->
         bitAnd(
             toUInt32(
                 bitShiftRight(
-                    toUInt64(bitShiftRight(reinterpretAsUInt128(uid), 64)), -- Read the top 64 bits
+                    toUInt64(bitShiftRight(iid, 64)), -- Read the top 64 bits
                     36 -- Shift down past the Random bits to find the Shard bits
                 )
             ),
@@ -166,15 +166,18 @@ CREATE OR REPLACE FUNCTION microshard_get_shard_id AS (uid) ->
         )
     );
 
+-- EXTRACT SHARD ID
+CREATE OR REPLACE FUNCTION microshard_get_shard_id AS (uid) ->
+    _microshard_get_shard_id(reinterpretAsUInt128(uid));
 
 -- Extract Raw Microseconds (Bypasses DateTime64 Year 2299 limit)
-CREATE OR REPLACE FUNCTION microshard_get_micros AS (uid) ->
+CREATE OR REPLACE FUNCTION _microshard_get_micros AS (iid) ->
     bitOr(
         -- Part A: Get the Top 48 bits of Time
         -- Found in the "Time" section (Low 64 bits of the integer).
         bitShiftLeft(
             bitShiftRight(
-                toUInt64(toUInt64(reinterpretAsUInt128(uid))),
+                iid,
                 16 -- Shift right to skip Version/ShardHigh/TimeLow
             ),
             6 -- Shift left to restore original position
@@ -183,12 +186,16 @@ CREATE OR REPLACE FUNCTION microshard_get_micros AS (uid) ->
         -- Found in the "Time" section (Low 64 bits of the integer).
         bitAnd(
             bitShiftRight(
-                toUInt64(toUInt64(reinterpretAsUInt128(uid))),
+                iid,
                 6 -- Shift right to skip ShardHigh
             ),
             63 -- Mask to keep only the 6 bits we want
         )
     );
+
+-- EXTRACT micros
+CREATE OR REPLACE FUNCTION microshard_get_micros AS (uid) ->
+    _microshard_get_micros(toUInt64(reinterpretAsUInt128(uid)));
 
 -- EXTRACT TIMESTAMP
 -- The maximum supported value is 2262-04-11 23:47:16 in UTC from official documentation
@@ -206,3 +213,19 @@ CREATE OR REPLACE FUNCTION microshard_get_iso_timestamp AS (uid) ->
         microshard_get_timestamp(uid),
         '%Y-%m-%dT%H:%i:%S.%fZ'
     );
+
+-- =============================================================================
+-- 5. SORTING UTILITY (Crucial for Performance)
+-- Flips High/Low bits so Time becomes the most significant part of the integer.
+-- =============================================================================
+
+-- Helper to get sort key of the id by shifting them the high 64 bits to low and low to high
+CREATE OR REPLACE FUNCTION _microshard_sort_key AS (id) ->
+    bitOr(
+        bitShiftLeft(id, 64),
+        bitShiftRight(id, 64)
+    );
+
+-- Creating the sort key from the id as data is stored in LITTLE ENDIAN
+CREATE OR REPLACE FUNCTION microshard_sort_key AS (uid) ->
+    _microshard_sort_key(reinterpretAsUInt128(uid));
