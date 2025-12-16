@@ -47,19 +47,20 @@ This repository is a monorepo containing implementations for multiple languages 
 | Language | Path | Status | Features |
 | :--- | :--- | :--- | :--- |
 | **Python** | [`implementations/python`](implementations/python) | ✅ Stable | Stateless, Class Gen, ISO parsing |
-| **JavaScript** | [`implementations/js`](implementations/js) | ✅ Stable | Node/Browser Universal, Types, Zero deps |
+| **JavaScript** | [`implementations/js`](implementations/js) | ✅ Stable | `bigint` Node/Browser Universal, Types, Zero deps |
 | **Go** | [`implementations/go`](implementations/go) | ✅ Stable | `uint64` optimizations, Zero deps |
-| **Rust** | [`implementations/rust`](implementations/rust) | ✅ Stable | Type-safe, `chrono` integration |
+| **Rust** | [`implementations/rust`](implementations/rust) | ✅ Stable | `u128` Type-safe, Zero deps |
 | **Lua** | [`implementations/lua`](implementations/lua) | ✅ Stable | Nginx/Redis optimized, 4x32-bit math |
 | **C / C++** | [`implementations/c`](implementations/c) | ✅ Stable | Header-only, Thread-safe, Zero deps |
 
 ### Database Extensions
-| Database | Path | Type | Performance |
-| :--- | :--- | :--- | :--- |
-| **SQLite** | [`db-extensions/sqlite`](db-extensions/sqlite) | C Extension | ~50x faster than Text UUIDs |
-| **PostgreSQL** | [`db-extensions/postgres`](db-extensions/postgres) | PL/pgSQL | Zero-allocation bytea parsing |
-| **DuckDB** | [`db-extensions/duckdb`](db-extensions/duckdb) | SQL Macros | Vectorized 128-bit Math |
-| **ClickHouse** | [`db-extensions/clickhouse`](db-extensions/clickhouse) | SQL UDFs | Native `UInt128` / Columnar |
+| Database | Path | Type | Status | Performance |
+| :--- | :--- | :--- | :--- | :--- |
+| **SQLite** | [`db-extensions/sqlite`](db-extensions/sqlite) | C Extension | ✅ Stable | ~50x faster than Text UUIDs |
+| **PostgreSQL** | [`db-extensions/postgres`](db-extensions/postgres) | PL/pgSQL | ✅ Stable | Zero-allocation bytea parsing |
+| **MySQL** | [`db-extensions/mysql`](db-extensions/mysql) | Stored Functions | ✅ Stable | Storage Optimized (BINARY 16) |
+| **DuckDB** | [`db-extensions/duckdb`](db-extensions/duckdb) | SQL Macros | ✅ Stable | 128-bit Math |
+| **ClickHouse** | [`db-extensions/clickhouse`](db-extensions/clickhouse) | SQL UDFs | ✅ Stable | Native `UInt128` |
 
 ### Technical Notes
 *   **Lua:** Uses a 4x32-bit integer structure to bypass Lua 5.1's double-precision limits. It automatically detects and uses `ngx.now` (OpenResty) or `redis.call('TIME')` (Redis) for high-precision timing.
@@ -198,7 +199,7 @@ int main() {
 }
 ```
 
-### C++ (Wrapper)
+### C++ (Header-Only C Header Wrapper)
 ```cpp
 #include <iostream>
 #include "microshard_uuid.hpp"

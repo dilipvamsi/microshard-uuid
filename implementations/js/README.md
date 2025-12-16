@@ -35,7 +35,7 @@ Generate a UUID object, convert it to a string for the DB, or extract the Shard 
 const { generate } = require('microshard-uuid');
 
 // 1. Generate an ID for Shard #101
-const uid = generate(101); 
+const uid = generate(101);
 
 // 2. Storage (Canonical String)
 console.log(uid.toString());
@@ -81,7 +81,7 @@ if (id1.lt(id2)) {
 const list = [id2, id1, generate(1)];
 
 // Pass the static compare function directly
-list.sort(MicroShardUUID.compare); 
+list.sort(MicroShardUUID.compare);
 
 // list is now sorted: [Oldest, ..., Newest]
 ```
