@@ -51,7 +51,7 @@ This repository is a monorepo containing implementations for multiple languages 
 | **Go** | [`implementations/go`](implementations/go) | ✅ Stable | `uint64` optimizations, Zero deps |
 | **Rust** | [`implementations/rust`](implementations/rust) | ✅ Stable | `u128` Type-safe, Zero deps |
 | **Lua** | [`implementations/lua`](implementations/lua) | ✅ Stable | Nginx/Redis optimized, 4x32-bit math |
-| **C / C++** | [`implementations/c`](implementations/c) | ✅ Stable | Header-only, Thread-safe, Zero deps |
+| **C / C++** | [`implementations/c`](implementations/c_cpp) | ✅ Stable | Header-only, Thread-safe, Zero deps |
 
 ### Database Extensions
 | Database | Path | Type | Status | Performance |
@@ -83,7 +83,11 @@ This repository is a monorepo containing implementations for multiple languages 
 
 ## 💻 Quick Start
 
-### Python
+### Languages
+
+The following examples demonstrate how to generate and use MicroShard UUIDs within various languages.
+
+#### Python
 ```python
 from microshard_uuid import generate, get_shard_id
 
@@ -96,7 +100,7 @@ target_shard = get_shard_id(uid)
 assert target_shard == 500
 ```
 
-### JavaScript / TypeScript
+#### JavaScript / TypeScript
 ```javascript
 import { generate } from 'microshard-uuid';
 
@@ -114,7 +118,7 @@ if (uid.getShardId() === 101) {
 }
 ```
 
-### Go
+#### Go
 ```go
 package main
 
@@ -138,7 +142,7 @@ func main() {
 }
 ```
 
-### Rust
+#### Rust
 ```rust
 use microshard_uuid::MicroShardUUID;
 
@@ -157,7 +161,7 @@ fn main() {
 }
 ```
 
-### Lua (Nginx / Redis)
+#### Lua (Nginx / Redis)
 ```lua
 local uuid = require("microsharduuid")
 
@@ -176,7 +180,7 @@ if shard_id == 101 then
 end
 ```
 
-### C (Header-Only)
+#### C (Header-Only)
 ```c
 #include <stdio.h>
 #include "microshard_uuid.h"
@@ -199,7 +203,7 @@ int main() {
 }
 ```
 
-### C++ (Header-Only C Header Wrapper)
+#### C++ (Header-Only C Header Wrapper)
 ```cpp
 #include <iostream>
 #include "microshard_uuid.hpp"
@@ -231,6 +235,130 @@ int main() {
     return 0;
 }
 ```
+
+---
+
+### Database Extensions
+
+The following examples demonstrate how to generate and use MicroShard UUIDs within various database systems.
+
+#### SQLite
+
+1.  **Compile the extension:**
+    ```bash
+    gcc -O2 -fPIC -shared -I../../implementations/c_cpp microshard_uuid.c -o microshard_uuid.so
+    ```
+2.  **Load the extension in SQLite:**
+    ```sql
+    -- Load the extension
+    .load ./microshard_uuid
+
+    -- Create table
+    CREATE TABLE events (
+        id BLOB PRIMARY KEY,
+        data TEXT
+    );
+
+    -- Insert using backfilling (Old timestamp)
+    INSERT INTO events (id, data)
+    VALUES (microshard_uuid_from_iso('2023-01-01T00:00:00Z', 1), 'Old Log');
+
+    -- Insert current time
+    INSERT INTO events (id, data)
+    VALUES (microshard_uuid_generate(1), 'New Log');
+
+    -- Query sorted chronologically
+    SELECT
+        microshard_uuid_to_string(id) as uuid,
+        microshard_uuid_get_iso(id) as time,
+        data
+    FROM events
+    ORDER BY id ASC;
+    ```
+
+#### PostgreSQL
+
+1.  **Create the functions:**
+    Execute the provided SQL code containing the plpgsql functions in your Postgres Client.
+
+2.  **Use the functions:**
+    ```sql
+    -- Generate a UUID for shard 101
+    -- The function returns a 'uuid' type, which is stored efficiently.
+    SELECT microshard_generate(101);
+
+    -- Insert into a table (assuming 'events' has an 'id' column of type UUID)
+    INSERT INTO events (id, data)
+    VALUES (microshard_generate(101), 'some data');
+
+    -- Extract shard ID for routing
+    SELECT microshard_get_shard_id(id) FROM events WHERE microshard_get_shard_id(id) = 101;
+
+    -- Get the timestamp
+    SELECT microshard_get_timestamp(id) FROM events LIMIT 1;
+    ```
+
+#### MySQL
+
+1.  **Load the stored functions:**
+    Execute the provided `.sql` file containing the MySQL functions in your MySQL client.
+
+2.  **Use the functions:**
+    ```sql
+    -- Generate a UUID for shard 200
+    -- The function returns BINARY(16), which is the optimized storage format.
+    SELECT microshard_generate(200);
+
+    -- Insert into a table (assuming 'events' has an 'id' column of type BINARY(16))
+    INSERT INTO events (id, data)
+    VALUES (microshard_generate(200), 'some data');
+
+    -- Extract shard ID for routing
+    SELECT microshard_get_shard_id(id) FROM events WHERE microshard_get_shard_id(id) = 200;
+
+    -- Get the timestamp
+    SELECT microshard_get_timestamp(id) FROM events LIMIT 1;
+    ```
+
+#### DuckDB
+
+1.  **Create the macros:**
+    Run the provided SQL code containing the DuckDB macros in your DuckDB client or script.
+
+2.  **Use the macros:**
+    ```sql
+    -- Generate a UUID for shard 300
+    SELECT microshard_generate(300);
+
+    -- Insert into a table (assuming 'events' has an 'id' column of type UUID)
+    INSERT INTO events (id, data) VALUES (microshard_generate(300), 'some data');
+
+    -- Extract shard ID for routing
+    SELECT microshard_get_shard_id(id) FROM events WHERE microshard_get_shard_id(id) = 300;
+
+    -- Get the timestamp
+    SELECT microshard_get_timestamp(id) FROM events LIMIT 1;
+    ```
+
+#### ClickHouse
+
+1.  **Create the functions:**
+    Execute the provided SQL code containing the ClickHouse UDFs in your ClickHouse client or script.
+
+2.  **Use the functions:**
+    ```sql
+    -- Generate a UUID for shard 400
+    SELECT microshard_generate(400);
+
+    -- Insert into a table (assuming 'events' has an 'id' column of type UUID)
+    INSERT INTO events (id, data) VALUES (microshard_generate(400), 'some data');
+
+    -- Extract shard ID for routing
+    SELECT microshard_get_shard_id(id) FROM events WHERE microshard_get_shard_id(id) = 400;
+
+    -- Get the timestamp
+    SELECT microshard_get_timestamp(id) FROM events LIMIT 1;
+    ```
 
 ---
 
