@@ -3,15 +3,20 @@
   "version": "1.0.0",
   "description": "A zero-lookup, partition-aware UUIDv8 implementation with microsecond precision.",
   "main": "src/index.js",
+  "unpkg": "dist/microshard.min.js",
+  "jsdelivr": "dist/microshard.min.js",
   "types": "types/index.d.ts",
   "files": [
     "src",
+    "dist",
     "types",
     "README.md",
     "LICENSE"
   ],
   "scripts": {
-    "test": "node test/test.js"
+    "test": "node test/test.js",
+    "build": "mkdir -p dist && terser ./src/index.js --compress --mangle --output dist/microshard.min.js",
+    "prepublishOnly": "npm run build"
   },
   "keywords": [
     "uuid",
@@ -37,5 +42,8 @@
   "bugs": {
     "url": "https://github.com/dilipvamsi/microshard-uuid/issues"
   },
-  "homepage": "https://github.com/dilipvamsi/microshard-uuid#readme"
+  "homepage": "https://github.com/dilipvamsi/microshard-uuid#readme",
+  "devDependencies": {
+    "terser": "^5.44.1"
+  }
 }

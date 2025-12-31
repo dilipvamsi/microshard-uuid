@@ -124,7 +124,7 @@ export function generate(shardId: number | bigint): MicroShardUUID;
  */
 export function fromTimestamp(
   timestamp: Date | string | number | bigint,
-  shardId: number | bigint
+  shardId: number | bigint,
 ): MicroShardUUID;
 
 /**
@@ -143,3 +143,10 @@ export class Generator {
    */
   newId(): MicroShardUUID;
 }
+
+/**
+ * UMD Namespace Declaration.
+ * This allows the library to be used as a global variable `MicroShard`
+ * when loaded via a <script> tag in non-module environments.
+ */
+export as namespace MicroShard;
