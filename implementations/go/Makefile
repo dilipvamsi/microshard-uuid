@@ -65,12 +65,15 @@ publish:
 		echo "Usage: make publish VERSION=v1.0.0"; \
 		exit 1; \
 	fi
+	@# Check if VERSION starts with 'v'
+	@case "$(VERSION)" in \
+		v*) ;; \
+		*) echo "❌ Error: Version must start with 'v' (e.g., v1.0.0)"; exit 1 ;; \
+	esac
 	@echo "🚀 Tagging release implementations/go/$(VERSION)..."
 	git tag implementations/go/$(VERSION)
 	@echo "pushing tag to origin..."
 	git push origin implementations/go/$(VERSION)
-	@echo "🌐 Triggering Go Proxy to index the new version..."
-	@# This forces pkg.go.dev to recognize the version immediately
+	@echo "🌐 Triggering Go Proxy..."
 	GOPROXY=https://proxy.golang.org go list -m $(MODULE_PATH)@$(VERSION)
-	@echo "✅ Published! Users can now run:"
-	@echo "   go get $(MODULE_PATH)@$(VERSION)"
+	@echo "✅ Published!"
