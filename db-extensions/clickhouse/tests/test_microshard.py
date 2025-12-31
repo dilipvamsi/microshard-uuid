@@ -213,10 +213,7 @@ class TestMicroShardUUIDExtended(unittest.TestCase):
             UNION ALL
             SELECT microshard_from_micros({t1}, {shard}) as uid
         ) ORDER BY
-            -- Primary: Time (Bottom 64 bits)
-            toUInt64(reinterpretAsUInt128(uid)),
-            -- Secondary: Random (Top 64 bits)
-            bitShiftRight(reinterpretAsUInt128(uid), 64)
+            microshard_sort_key(uid)
         ASC
         """
         rows = self.client.execute(sql)
