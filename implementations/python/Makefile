@@ -47,13 +47,13 @@ build: build-deps
 	@echo "--- Building Package ---"
 	$(PYTHON) -m build
 
-# 5
-.PHONY: publish
+# 6 Publish Check
+.PHONY: publish-check
 publish-check: build
-		@echo "--- Publishing Package ---"
-		$(PYTHON) -m twine check dist/*
+	@echo "--- Publishing Package ---"
+	$(PYTHON) -m twine check dist/*
 
-# 6. Publish Package
+# 7. Publish Package
 .PHONY: publish
 publish: publish-check
 	@echo "--- Publishing Package ---"
