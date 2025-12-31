@@ -1,9 +1,9 @@
-import time
 import os
 import struct
-from uuid import UUID
+import time
 from datetime import datetime, timezone
-from typing import Union
+from typing import Union, cast
+from uuid import UUID
 
 # --- Constants ---
 MAX_SHARD_ID = (1 << 32) - 1
@@ -18,7 +18,57 @@ MASK_SHARD_LOW_26 = 0x3FFFFFF
 # --- Stateless Module Functions ---
 
 
-def generate(shard_id: int) -> UUID:
+class MicroShardUUID(UUID):
+    """
+    A subclass of the standard Python UUID.
+    Adds methods to extract Shard ID and Timestamp directly from the object.
+    """
+
+    @property
+    def shard_id(self) -> int:
+        """Extracts the 32-bit Shard ID."""
+        return self.get_shard_id()
+
+    def get_shard_id(self) -> int:
+        """Extracts the 32-bit Shard ID."""
+        val = cast(int, self.int)
+        high_64 = val >> 64
+        low_64 = val & 0xFFFFFFFFFFFFFFFF
+
+        s_high = high_64 & 0x3F
+        s_low = (low_64 >> 36) & 0x3FFFFFF
+
+        return (s_high << 26) | s_low
+
+    @property
+    def timestamp(self) -> datetime:
+        """Extracts the timestamp as a timezone-aware (UTC) datetime."""
+        return self.get_timestamp()
+
+    def get_timestamp(self) -> datetime:
+        """Extracts the timestamp as a timezone-aware (UTC) datetime."""
+        val = cast(int, self.int)
+        high_64 = val >> 64
+
+        t_high = (high_64 >> 16) & 0xFFFFFFFFFFFF
+        t_low = (high_64 >> 6) & 0x3F
+
+        micros = (t_high << 6) | t_low
+        return datetime.fromtimestamp(micros / 1_000_000.0, tz=timezone.utc)
+
+    def get_iso_timestamp(self) -> str:
+        """
+        Extracts the timestamp as a strict ISO 8601 string with microsecond precision.
+        Format: YYYY-MM-DDTHH:MM:SS.mmmmmmZ
+        """
+        return (
+            self.get_timestamp()
+            .isoformat(timespec="microseconds")
+            .replace("+00:00", "Z")
+        )
+
+
+def generate(shard_id: int) -> MicroShardUUID:
     """
     Stateless generation: Create a UUID for a specific shard using current time.
     """
@@ -27,48 +77,15 @@ def generate(shard_id: int) -> UUID:
     return _build_uuid(current_micros, shard_id)
 
 
-def from_timestamp(timestamp: Union[datetime, str, int, float], shard_id: int) -> UUID:
+def from_timestamp(
+    timestamp: Union[datetime, str, int, float], shard_id: int
+) -> MicroShardUUID:
     """
     Stateless generation: Create a UUID for a specific shard and specific time.
     """
     _validate_shard(shard_id)
     micros = _normalize_timestamp(timestamp)
     return _build_uuid(micros, shard_id)
-
-
-def get_shard_id(uid: UUID) -> int:
-    """Extracts the 32-bit Shard ID from a UUID."""
-    val = uid.int
-    high_64 = val >> 64
-    low_64 = val & 0xFFFFFFFFFFFFFFFF
-
-    s_high = high_64 & 0x3F
-    s_low = (low_64 >> 36) & 0x3FFFFFF
-
-    return (s_high << 26) | s_low
-
-
-def get_timestamp(uid: UUID) -> datetime:
-    """Extracts the timestamp as a timezone-aware (UTC) datetime."""
-    val = uid.int
-    high_64 = val >> 64
-
-    t_high = (high_64 >> 16) & 0xFFFFFFFFFFFF
-    t_low = (high_64 >> 6) & 0x3F
-
-    micros = (t_high << 6) | t_low
-    return datetime.fromtimestamp(micros / 1_000_000.0, tz=timezone.utc)
-
-
-def get_iso_timestamp(uid: UUID) -> str:
-    """
-    Extracts the timestamp as a strict ISO 8601 string with microsecond precision.
-    Format: YYYY-MM-DDTHH:MM:SS.mmmmmmZ
-    """
-    dt = get_timestamp(uid)
-    # timespec='microseconds' ensures we don't drop .000000
-    # replace('+00:00', 'Z') ensures strict Zulu format matching JS/Specs
-    return dt.isoformat(timespec="microseconds").replace("+00:00", "Z")
 
 
 # --- Stateful Generator Class ---
@@ -139,7 +156,7 @@ def _normalize_timestamp(timestamp: Union[datetime, str, int, float]) -> int:
         raise TypeError("Timestamp must be datetime, ISO string, int, or float")
 
 
-def _build_uuid(micros: int, shard_id: int) -> UUID:
+def _build_uuid(micros: int, shard_id: int) -> MicroShardUUID:
     if micros > MAX_TIME_MICROS:
         raise ValueError("Time overflow (Year > 2541)")
 
@@ -156,4 +173,4 @@ def _build_uuid(micros: int, shard_id: int) -> UUID:
     shard_low = shard_id & MASK_SHARD_LOW_26
     low_64 = (0x2 << 62) | (shard_low << 36) | random_36
 
-    return UUID(int=(high_64 << 64) | low_64)
+    return MicroShardUUID(int=(high_64 << 64) | low_64)

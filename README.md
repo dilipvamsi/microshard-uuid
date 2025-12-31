@@ -96,7 +96,7 @@ uid = generate(shard_id=500)
 print(f"Generated: {uid}")
 
 # 2. Extract Shard ID (Routing)
-target_shard = get_shard_id(uid)
+target_shard = uid.get_shard_id()
 assert target_shard == 500
 ```
 

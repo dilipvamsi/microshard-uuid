@@ -1,15 +1,11 @@
 import unittest
 import time
 from datetime import datetime, timezone, timedelta
-from uuid import UUID
 
 # Import everything from the package
 from microshard_uuid import (
     generate,
     from_timestamp,
-    get_shard_id,
-    get_timestamp,
-    get_iso_timestamp,
     Generator,
 )
 
@@ -28,7 +24,7 @@ class TestMicroShardIntegrity(unittest.TestCase):
         for shard in test_cases:
             with self.subTest(shard=shard):
                 uid = generate(shard)
-                extracted = get_shard_id(uid)
+                extracted = uid.get_shard_id()
                 self.assertEqual(
                     extracted, shard, f"Failed integrity for shard {shard}"
                 )
@@ -60,7 +56,7 @@ class TestMicroShardTime(unittest.TestCase):
         uid = generate(shard_id=1)
         end_dt = datetime.now(timezone.utc)
 
-        extracted_dt = get_timestamp(uid)
+        extracted_dt = uid.get_timestamp()
 
         # Check range: start - delta <= extracted <= end + delta
         self.assertGreaterEqual(extracted_dt, start_dt - self.delta)
@@ -72,7 +68,7 @@ class TestMicroShardTime(unittest.TestCase):
         target_dt = datetime(2023, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
 
         uid = from_timestamp(target_dt, shard_id=50)
-        extracted_dt = get_timestamp(uid)
+        extracted_dt = uid.get_timestamp()
 
         self.assertEqual(extracted_dt, target_dt)
 
@@ -82,7 +78,7 @@ class TestMicroShardTime(unittest.TestCase):
         micros = 1672574400000000
 
         uid = from_timestamp(micros, shard_id=99)
-        extracted_dt = get_timestamp(uid)
+        extracted_dt = uid.get_timestamp()
 
         # Convert extracted datetime back to micros
         extracted_micros = int(extracted_dt.timestamp() * 1_000_000)
@@ -94,7 +90,7 @@ class TestMicroShardTime(unittest.TestCase):
         seconds = 1672574400.5
 
         uid = from_timestamp(seconds, shard_id=99)
-        extracted_dt = get_timestamp(uid)
+        extracted_dt = uid.get_timestamp()
 
         self.assertEqual(extracted_dt.timestamp(), seconds)
 
@@ -106,7 +102,7 @@ class TestMicroShardTime(unittest.TestCase):
         input_iso = "2025-12-12T01:35:00.123456Z"
 
         uid = from_timestamp(input_iso, shard_id=1)
-        output_iso = get_iso_timestamp(uid)
+        output_iso = uid.get_iso_timestamp()
 
         self.assertEqual(output_iso, input_iso)
 
@@ -118,7 +114,7 @@ class TestMicroShardTime(unittest.TestCase):
         input_iso = "2025-01-01T12:00:00.000000Z"
 
         uid = from_timestamp(input_iso, shard_id=1)
-        output_iso = get_iso_timestamp(uid)
+        output_iso = uid.get_iso_timestamp()
 
         self.assertEqual(output_iso, input_iso)
 
@@ -135,15 +131,15 @@ class TestGeneratorClass(unittest.TestCase):
     def test_new_id(self):
         """Ensure new_id() uses the configured shard ID."""
         uid = self.gen.new_id()
-        self.assertEqual(get_shard_id(uid), self.shard_id)
+        self.assertEqual(uid.get_shard_id(), self.shard_id)
 
     def test_from_timestamp(self):
         """Ensure class from_timestamp() uses configured shard ID."""
         dt = datetime(2025, 1, 1, tzinfo=timezone.utc)
         uid = self.gen.from_timestamp(dt)
 
-        self.assertEqual(get_shard_id(uid), self.shard_id)
-        self.assertEqual(get_timestamp(uid), dt)
+        self.assertEqual(uid.get_shard_id(), self.shard_id)
+        self.assertEqual(uid.get_timestamp(), dt)
 
     def test_init_validation(self):
         """Generator should fail immediately if initialized with bad ID."""
@@ -188,7 +184,7 @@ class TestRFCCompliance(unittest.TestCase):
         self.assertLess(uid1, uid2)
 
         # Verify timestamp comparison matches
-        self.assertLess(get_timestamp(uid1), get_timestamp(uid2))
+        self.assertLess(uid1.get_timestamp(), uid2.get_timestamp())
 
 
 class TestValidation(unittest.TestCase):

@@ -48,7 +48,7 @@ uid = generate(shard_id=500)
 print(f"Generated: {uid}")
 
 # 2. Extract Shard ID (Routing)
-target_shard = get_shard_id(uid)
+target_shard = uid.get_shard_id()
 assert target_shard == 500
 ```
 
@@ -88,15 +88,15 @@ You can decode any MicroShard UUID to retrieve its creation time and origin shar
 from microshard_uuid import get_timestamp, get_shard_id
 
 # Option A: Get Python Datetime object
-dt = get_timestamp(uid)
+dt = uid.get_timestamp()
 # datetime.datetime(2025, 12, 12, 10, 0, 0, 123456, tzinfo=datetime.timezone.utc)
 
 # Option B: Get ISO String (Strict format with Z)
-iso = get_iso_timestamp(uid)
+iso = uid.get_iso_timestamp()
 # "2025-12-12T10:00:00.123456Z"
 
 # Get Origin Shard
-shard = get_shard_id(uid)
+shard = uid.get_shard_id()
 print(f"Origin Shard: {shard}")
 ```
 
@@ -123,5 +123,5 @@ This library includes a comprehensive test suite using `unittest`.
 
 ```bash
 # Run tests from the implementation folder
-PYTHONPATH=src python3 -m unittest discover tests
+make test
 ```
