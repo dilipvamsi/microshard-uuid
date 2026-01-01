@@ -35,13 +35,26 @@
 extern "C" {
 #endif
 
-/* Standard C99 Includes */
-#include <stdint.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <ctype.h>
-#include <time.h>
+/* 1. Feature Test Macros (Must come before any includes) */
+/* Required for clock_gettime() and nanosecond precision on Linux */
+#if !defined(_POSIX_C_SOURCE)
+#define _POSIX_C_SOURCE 200809L
+#endif
+
+/* 2. Core Type Definitions (Load these first) */
+#include <stdint.h>   // uint64_t, uint32_t, int64_t, uint8_t
+#include <stdbool.h>  // bool, true, false
+
+/* 3. System & OS Interfaces */
+#include <time.h>     // clock_gettime, struct timespec, gmtime, strftime, time_t
+
+/* 4. Memory & String Manipulation */
+#include <stdlib.h>   // Standard definitions (NULL)
+#include <string.h>   // strlen, strchr
+
+/* 5. I/O and Parsing */
+#include <stdio.h>    // snprintf, sscanf
+#include <ctype.h>    // isdigit
 
 /*
 ** ============================================================================
@@ -127,11 +140,11 @@ typedef struct {
 
 typedef struct {
     uint64_t s[4];
-    int init;
+    bool init;
 } _ms_rng_state_t;
 
 /* Thread-local state instance. Zero-initialized. */
-static MS_TLS _ms_rng_state_t _ms_ctx = {{0,0,0,0}, 0};
+static MS_TLS _ms_rng_state_t _ms_ctx = {{0,0,0,0}, false};
 
 /* Internal: Rotate Left */
 static inline uint64_t _ms_rotl(const uint64_t x, int k) {
@@ -173,7 +186,7 @@ static inline uint64_t _ms_next_36() {
         _ms_ctx.s[1] = _ms_splitmix64(&seed_val);
         _ms_ctx.s[2] = _ms_splitmix64(&seed_val);
         _ms_ctx.s[3] = _ms_splitmix64(&seed_val);
-        _ms_ctx.init = 1;
+        _ms_ctx.init = true;
     }
 
     /* 2. Xoshiro256** Algorithm */

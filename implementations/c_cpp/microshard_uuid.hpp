@@ -162,7 +162,14 @@ namespace std {
     template <>
     struct hash<microshard::UUID> {
         std::size_t operator()(const microshard::UUID& uuid) const {
-            /* XOR High and Low parts for a simple but effective hash */
+            /*
+             * Combine hashes using XOR (^).
+             * We shift the Low part left by 1 bit (<< 1) to break symmetry.
+             *
+             * 1. Prevents Commutativity: Ensures Hash(A, B) != Hash(B, A).
+             * 2. Prevents Self-Cancellation: Ensures that if High == Low,
+             *    the result is not 0 (since X ^ X == 0).
+             */
             auto raw = uuid.raw();
             return std::hash<uint64_t>{}(raw.high) ^ (std::hash<uint64_t>{}(raw.low) << 1);
         }

@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::fmt;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -56,6 +57,15 @@ impl std::error::Error for MicroShardError {}
 pub struct MicroShardUUID(u128);
 
 impl MicroShardUUID {
+
+    pub fn high(&self) -> u64 {
+        (self.0 >> 64) as u64
+    }
+
+    pub fn low(&self) -> u64 {
+        self.0 as u64
+    }
+
     // -------------------------------------------------------------------------
     // Constructors
     // -------------------------------------------------------------------------
@@ -196,8 +206,8 @@ impl MicroShardUUID {
             return Err(MicroShardError::TimeOverflow);
         }
 
-        let mut rng = SimpleRng::new();
-        let rnd_val = rng.next_u64() & MAX_RANDOM;
+        // Get 36 bits of randomness from Thread-Local Xoshiro256**
+        let rnd_val = Xoshiro256StarStar::next_36();
 
         let shard_id_64 = shard_id as u64;
 
@@ -238,76 +248,94 @@ impl fmt::Display for MicroShardUUID {
     }
 }
 
+
 // ==========================================
-// Internal: Minimal PRNG (Xorshift64*)
+// Internal: PRNG (Xoshiro256**)
 // ==========================================
 
-/// A lightweight Pseudo-Random Number Generator (PRNG).
-/// Implements the "Xorshift64*" algorithm.
-///
-/// It is NOT cryptographically secure, but it is excellent for
-/// UUID generation (collision avoidance) because it is fast
-/// and has good statistical distribution.
-struct SimpleRng {
-    /// The current state of the generator.
-    /// This changes every time we request a new number.
-    state: u64,
+/// Internal State for Xoshiro256**
+struct XoshiroState {
+    s: [u64; 4],
+    init: bool,
 }
 
-impl SimpleRng {
-    /// Initializes the RNG with a non-deterministic seed.
-    fn new() -> Self {
-        // Source 1: Time
-        // We use nanoseconds to get the highest possible resolution.
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos();
-
-        // Source 2: Memory Address (ASLR)
-        // &now gets the memory address of the 'now' variable on the stack.
-        // Modern Operating Systems randomize stack locations (ASLR).
-        // Casting this pointer to u64 gives us a number that varies per run.
-        // This helps prevent collisions if two threads start at the exact same nanosecond.
-        let ptr = &now as *const _ as u64;
-
-        // Combine the sources using XOR.
-        // We cast 'now' to u64 (truncating the upper bits of the u128 nanoseconds).
-        let mut state = (now as u64) ^ ptr;
-
-        // SAFETY FALLBACK:
-        // Xorshift algorithms cannot recover if the state is exactly 0.
-        // (0 XOR 0 is always 0, so it would output 0 forever).
-        // If our math accidentally resulted in 0, we force a specific pattern.
-        if state == 0 {
-            state = 0xCAFEBABE; // A classic non-zero hex pattern
+impl XoshiroState {
+    const fn new() -> Self {
+        Self {
+            s: [0; 4],
+            init: false,
         }
+    }
+}
 
-        Self { state }
+// Thread-Local Storage for the RNG state.
+// This acts like `static MS_TLS` in C.
+thread_local! {
+    static RNG_STATE: RefCell<XoshiroState> = RefCell::new(XoshiroState::new());
+}
+
+struct Xoshiro256StarStar;
+
+impl Xoshiro256StarStar {
+    /// Internal: Rotate Left
+    #[inline(always)]
+    fn rotl(x: u64, k: i32) -> u64 {
+        (x << k) | (x >> (64 - k))
     }
 
-    /// Generates the next random u64 in the sequence.
-    /// Algorithm: Xorshift64*
-    fn next_u64(&mut self) -> u64 {
-        let mut x = self.state;
+    /// Internal: SplitMix64 (Used for bootstrapping seed)
+    fn splitmix64(x: &mut u64) -> u64 {
+        *x = x.wrapping_add(0x9e3779b97f4a7c15);
+        let mut z = *x;
+        z = (z ^ (z >> 30)).wrapping_mul(0xbf58476d1ce4e5b9);
+        z = (z ^ (z >> 27)).wrapping_mul(0x94d049bb133111eb);
+        z ^ (z >> 31)
+    }
 
-        // --- Step 1: The Xorshift ---
-        // These shift constants (12, 25, 27) are mathematically chosen
-        // to maximize the "period" (how long until the sequence repeats).
-        // For 64-bit, these specific numbers cover the full 2^64-1 cycle.
-        x ^= x >> 12;
-        x ^= x << 25;
-        x ^= x >> 27;
+    /// Internal: Get High-Res Nanoseconds for Seeding
+    fn get_nanos_seed() -> u64 {
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos() as u64
+    }
 
-        // Save the new state for the next call
-        self.state = x;
+    /// Public: Get next 36 bits of randomness.
+    /// Handles lazy initialization.
+    fn next_36() -> u64 {
+        RNG_STATE.with(|cell| {
+            let mut ctx = cell.borrow_mut();
 
-        // --- Step 2: The Star (*) Multiplication ---
-        // Pure Xorshift can sometimes leave visual patterns in the lower bits.
-        // Multiplying by a large, specific prime constant scrambles the bits
-        // one last time.
-        // .wrapping_mul ensures it doesn't panic on overflow.
-        x.wrapping_mul(0x2545F4914F6CDD1D)
+            // 1. Auto-Seed if not initialized
+            if !ctx.init {
+                let now = Self::get_nanos_seed();
+
+                // ASLR Entropy: XOR time with the address of the state variable on stack/heap
+                let ptr = &*ctx as *const _ as u64;
+                let mut seed_val = now ^ ptr;
+
+                ctx.s[0] = Self::splitmix64(&mut seed_val);
+                ctx.s[1] = Self::splitmix64(&mut seed_val);
+                ctx.s[2] = Self::splitmix64(&mut seed_val);
+                ctx.s[3] = Self::splitmix64(&mut seed_val);
+                ctx.init = true;
+            }
+
+            // 2. Xoshiro256** Algorithm
+            let result = Self::rotl(ctx.s[1].wrapping_mul(5), 7).wrapping_mul(9);
+            let t = ctx.s[1] << 17;
+
+            ctx.s[2] ^= ctx.s[0];
+            ctx.s[3] ^= ctx.s[1];
+            ctx.s[1] ^= ctx.s[2];
+            ctx.s[0] ^= ctx.s[3];
+
+            ctx.s[2] ^= t;
+            ctx.s[3] = Self::rotl(ctx.s[3], 45);
+
+            // 3. Return truncated to 36 bits
+            result & MAX_RANDOM
+        })
     }
 }
 
