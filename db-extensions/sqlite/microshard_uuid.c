@@ -274,6 +274,14 @@ static void fn_validate_iso(sqlite3_context *ctx, int argc, sqlite3_value **argv
 }
 
 /*
+** SQL: microshard_uuid_version() -> TEXT
+** Desc: Returns the version of the microshard-uuid extension.
+*/
+static void fn_version(sqlite3_context *ctx, int argc, sqlite3_value **argv) {
+    sqlite3_result_text(ctx, "1.0.0", -1, SQLITE_STATIC);
+}
+
+/*
 ** ============================================================================
 ** Extension Registration
 ** ============================================================================
@@ -314,6 +322,7 @@ int sqlite3_microsharduuid_init(
     sqlite3_create_function(db, "microshard_uuid_get_time", 1, f_det, 0, fn_get_time, 0, 0);
     sqlite3_create_function(db, "microshard_uuid_get_iso", 1, f_det, 0, fn_get_iso, 0, 0);
     sqlite3_create_function(db, "microshard_uuid_validate_iso", 1, f_det, 0, fn_validate_iso, 0, 0);
+    sqlite3_create_function(db, "microshard_uuid_version", 0, f_det, 0, fn_version, 0, 0);
 
     return rc;
 }
