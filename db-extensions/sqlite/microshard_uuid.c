@@ -213,40 +213,58 @@ static void fn_to_string(sqlite3_context *ctx, int argc, sqlite3_value **argv) {
 }
 
 /*
-** SQL: microshard_uuid_get_shard_id(uuid_blob BLOB) -> INTEGER
-** Desc: Extracts the Shard ID (Zero-Lookup) from the binary UUID.
+** SQL: microshard_uuid_get_shard_id(uuid_blob_or_text) -> INTEGER
+** Desc: Extracts the Shard ID (Zero-Lookup) from the binary UUID or TEXT.
 */
 static void fn_get_shard_id(sqlite3_context *ctx, int argc, sqlite3_value **argv) {
-    if (sqlite3_value_bytes(argv[0]) != 16) return;
+    int type = sqlite3_value_type(argv[0]);
+    ms_uuid_t u;
 
-    const unsigned char* blob = sqlite3_value_blob(argv[0]);
-    ms_uuid_t u = ms_from_bytes_be(blob);
+    if (type == SQLITE_BLOB && sqlite3_value_bytes(argv[0]) == 16) {
+        u = ms_from_bytes_be(sqlite3_value_blob(argv[0]));
+    } else if (type == SQLITE_TEXT && sqlite3_value_bytes(argv[0]) == 36) {
+        if (ms_from_string((const char*)sqlite3_value_text(argv[0]), &u) != MS_OK) return;
+    } else {
+        return;
+    }
 
     sqlite3_result_int64(ctx, (sqlite3_int64)ms_extract_shard(u));
 }
 
 /*
-** SQL: microshard_uuid_get_time(uuid_blob BLOB) -> INTEGER
-** Desc: Extracts the timestamp in microseconds from the binary UUID.
+** SQL: microshard_uuid_get_time(uuid_blob_or_text) -> INTEGER
+** Desc: Extracts the timestamp in microseconds from the binary UUID or TEXT.
 */
 static void fn_get_time(sqlite3_context *ctx, int argc, sqlite3_value **argv) {
-    if (sqlite3_value_bytes(argv[0]) != 16) return;
+    int type = sqlite3_value_type(argv[0]);
+    ms_uuid_t u;
 
-    const unsigned char* blob = sqlite3_value_blob(argv[0]);
-    ms_uuid_t u = ms_from_bytes_be(blob);
+    if (type == SQLITE_BLOB && sqlite3_value_bytes(argv[0]) == 16) {
+        u = ms_from_bytes_be(sqlite3_value_blob(argv[0]));
+    } else if (type == SQLITE_TEXT && sqlite3_value_bytes(argv[0]) == 36) {
+        if (ms_from_string((const char*)sqlite3_value_text(argv[0]), &u) != MS_OK) return;
+    } else {
+        return;
+    }
 
     sqlite3_result_int64(ctx, (sqlite3_int64)ms_extract_time(u));
 }
 
 /*
-** SQL: microshard_uuid_get_iso(uuid_blob BLOB) -> TEXT
+** SQL: microshard_uuid_get_iso(uuid_blob_or_text) -> TEXT
 ** Desc: Extracts timestamp and formats as ISO 8601 string.
 */
 static void fn_get_iso(sqlite3_context *ctx, int argc, sqlite3_value **argv) {
-    if (sqlite3_value_bytes(argv[0]) != 16) return;
+    int type = sqlite3_value_type(argv[0]);
+    ms_uuid_t u;
 
-    const unsigned char* blob = sqlite3_value_blob(argv[0]);
-    ms_uuid_t u = ms_from_bytes_be(blob);
+    if (type == SQLITE_BLOB && sqlite3_value_bytes(argv[0]) == 16) {
+        u = ms_from_bytes_be(sqlite3_value_blob(argv[0]));
+    } else if (type == SQLITE_TEXT && sqlite3_value_bytes(argv[0]) == 36) {
+        if (ms_from_string((const char*)sqlite3_value_text(argv[0]), &u) != MS_OK) return;
+    } else {
+        return;
+    }
 
     char buf[40];
     if (check_error(ctx, ms_extract_iso(u, buf, sizeof(buf)))) return;
