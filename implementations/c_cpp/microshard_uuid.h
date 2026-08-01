@@ -109,7 +109,12 @@ static inline const char* ms_strerror(ms_status_t status) {
 */
 #if defined(_WIN32) || defined(_WIN64)
     #include <windows.h>
-    #define MS_TLS __declspec(thread)
+    /* Add support for MinGW GCC on Windows */
+    #if defined(__GNUC__)
+        #define MS_TLS __thread
+    #else
+        #define MS_TLS __declspec(thread)
+    #endif
 #else
     #include <sys/time.h>
     /* Detect C11 standard or GCC/Clang extensions */
