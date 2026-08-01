@@ -185,6 +185,7 @@ BEGIN
          + (seconds * INTERVAL '1 second')
          + (sub_micros * INTERVAL '1 microsecond');
 END;
+$$ LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE;
 
 -- =============================================================================
 -- 8. VERSION
