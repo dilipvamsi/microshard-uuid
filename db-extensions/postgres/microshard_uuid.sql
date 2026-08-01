@@ -185,4 +185,13 @@ BEGIN
          + (seconds * INTERVAL '1 second')
          + (sub_micros * INTERVAL '1 microsecond');
 END;
+
+-- =============================================================================
+-- 8. VERSION
+-- =============================================================================
+CREATE OR REPLACE FUNCTION microshard_uuid_version()
+RETURNS text AS $$
+BEGIN
+    RETURN '1.0.0';
+END;
 $$ LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE;
